@@ -10,12 +10,16 @@ jobs:
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v4
-    - name: Compile injector dylib
+    - name: Compile injector dylib for iOS
       run: |
-        clang -shared -fobjc-arc -framework Foundation -framework UIKit \
+        # Use iOS SDK with proper arch
+        xcrun -sdk iphoneos clang -shared -fobjc-arc \
+          -framework Foundation -framework UIKit \
+          -arch arm64 -miphoneos-version-min=13.0 \
           -o iGameGodInjector.dylib iGameGodInjector.c
         echo "Build successful!"
         file iGameGodInjector.dylib
+        codesign --sign - --force iGameGodInjector.dylib || true
     - uses: actions/upload-artifact@v4
       with:
         name: iGameGodInjector-dylib
