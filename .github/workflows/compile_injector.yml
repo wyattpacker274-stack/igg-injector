@@ -1,0 +1,23 @@
+name: Compile iGameGod Injector
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Compile injector dylib
+      run: |
+        clang -shared -fobjc-arc -framework Foundation -framework UIKit \
+          -o iGameGodInjector.dylib iGameGodInjector.c
+        echo "Build successful!"
+        file iGameGodInjector.dylib
+    - uses: actions/upload-artifact@v4
+      with:
+        name: iGameGodInjector-dylib
+        path: iGameGodInjector.dylib
+        retention-days: 30
