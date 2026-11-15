@@ -1,4 +1,4 @@
-name: Compile iGameGod Injector
+name: Compile iGameGod Injector FIXED
 
 on:
   push:
@@ -9,10 +9,10 @@ jobs:
   build:
     runs-on: macos-latest
     steps:
-    - uses: actions/checkout@v4
-    - name: Compile injector dylib for iOS
+    - name: Checkout code
+      uses: actions/checkout@v4.2.2
+    - name: Compile FIXED injector dylib for iOS
       run: |
-        # Use iOS SDK with proper arch
         xcrun -sdk iphoneos clang -shared -fobjc-arc \
           -framework Foundation -framework UIKit \
           -arch arm64 -miphoneos-version-min=13.0 \
@@ -20,8 +20,9 @@ jobs:
         echo "Build successful!"
         file iGameGodInjector.dylib
         codesign --sign - --force iGameGodInjector.dylib || true
-    - uses: actions/upload-artifact@v4
+    - name: Upload dylib artifact
+      uses: actions/upload-artifact@v4
       with:
-        name: iGameGodInjector-dylib
+        name: iGameGodInjector-dylib-FIXED
         path: iGameGodInjector.dylib
         retention-days: 30
