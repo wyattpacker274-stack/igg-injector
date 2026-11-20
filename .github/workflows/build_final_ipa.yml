@@ -19,8 +19,8 @@ jobs:
     - name: Set download URLs
       run: |
         # REPLACE THESE WITH YOUR ACTUAL RELEASE ASSET URLs
-        echo "TRIUMPH_IPA_URL=https://github.com/YOUR_USERNAME/triumph-igg-builder/releases/download/v1.0/com.triumphsdkprod-2.134.0-Decrypted.ipa" >> $GITHUB_ENV
-        echo "IGG_DEB_URL=https://github.com/YOUR_USERNAME/triumph-igg-builder/releases/download/v1.0/com.gamegod.igg_0.8.9.5_iphoneos-arm.deb" >> $GITHUB_ENV
+        echo "TRIUMPH_IPA_URL=https://github.com/wyattpacker274-stack/triumph-igg-builder/releases/download/v1.0/com.triumphsdkprod-2.134.0-Decrypted.ipa" >> $GITHUB_ENV
+        echo "IGG_DEB_URL=https://github.com/wyattpacker274-stack/triumph-igg-builder/releases/download/v1.0/com.gamegod.igg_0.8.9.5_iphoneos-arm.deb" >> $GITHUB_ENV
     
     - name: Download Triumph 2.134.0 IPA
       run: |
