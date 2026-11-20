@@ -1,0 +1,248 @@
+name: Build Triumph 2.134 + iGameGod Final IPA
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Final IPA
+    runs-on: macos-latest
+    timeout-minutes: 60
+    
+    steps:
+    # ──────────────────────────────────────────────────────────────
+    # DOWNLOAD: Triumph 2.134 IPA + iGameGod .deb from Release
+    # ──────────────────────────────────────────────────────────────
+    - name: Set download URLs
+      run: |
+        # REPLACE THESE WITH YOUR ACTUAL RELEASE ASSET URLs
+        echo "TRIUMPH_IPA_URL=https://github.com/YOUR_USERNAME/triumph-igg-builder/releases/download/v1.0/com.triumphsdkprod-2.134.0-Decrypted.ipa" >> $GITHUB_ENV
+        echo "IGG_DEB_URL=https://github.com/YOUR_USERNAME/triumph-igg-builder/releases/download/v1.0/com.gamegod.igg_0.8.9.5_iphoneos-arm.deb" >> $GITHUB_ENV
+    
+    - name: Download Triumph 2.134.0 IPA
+      run: |
+        curl -L -o /tmp/triumph.ipa "$TRIUMPH_IPA_URL"
+        echo "Triumph IPA: $(ls -lh /tmp/triumph.ipa)"
+    
+    - name: Download iGameGod .deb
+      run: |
+        curl -L -o /tmp/igg.deb "$IGG_DEB_URL"
+        echo "iGameGod DEB: $(ls -lh /tmp/igg.deb)"
+    
+    # ──────────────────────────────────────────────────────────────
+    # BUILD: Complete modification + compilation + packaging
+    # ──────────────────────────────────────────────────────────────
+    - name: Build Complete Modified IPA
+      run: |
+        set -e
+        
+        cat > /tmp/build.py << 'PYEOF'
+        #!/usr/bin/env python3
+        """Complete Triumph 2.134 + iGameGod Builder - Runs on macOS"""
+        import os, sys, shutil, plistlib, random, string, zipfile, subprocess
+        from pathlib import Path
+        
+        WORK = Path('/tmp/work')
+        OUT_IPA = Path('/tmp/Triumph_2.134_iGameGod_FINAL.ipa')
+        
+        RANDOMIZE = True; STRIP = True; REMOVE_SIGS = True
+        
+        def rs(n=8): return ''.join(random.choices(string.ascii_lowercase+string.digits,k=n))
+        def rb(): return f"{random.choice(['com','org','net','io','app','dev','tools','utils','sys','core'])}.{random.choice(['apple','ios','mobile','device','system','framework','kit','lib','api','svc','arcade','game','play'])}.{rs(6)}.{rs(4)}"
+        
+        def mod_plist(p, bid, name, dname, triumph=True):
+            with open(p,'rb') as f: pl=plistlib.load(f)
+            if RANDOMIZE:
+                pl['CFBundleIdentifier']=bid; pl['CFBundleName']=name; pl['CFBundleDisplayName']=dname; pl['CFBundleExecutable']=name
+            if triumph:
+                pl['CFBundleShortVersionString']=f"{random.randint(1,9)}.{random.randint(0,9)}.{random.randint(0,9)}"
+                pl['CFBundleVersion']=str(random.randint(100,999))
+            else:
+                pl['CFBundleShortVersionString']=f"{random.randint(1,9)}.{random.randint(0,9)}.{random.randint(0,9)}.{random.randint(0,9)}"
+                pl['CFBundleVersion']=str(random.randint(1,999))
+            pl['DTXcode']=str(random.randint(2600,2750))
+            pl['DTXcodeBuild']=f"{random.randint(26,28)}A{random.randint(1000,9999)}"
+            pl['DTCompiler']='com.apple.compilers.llvm.clang.1_0'
+            pl['DTPlatformVersion']=f"{random.randint(17,26)}.{random.randint(0,9)}"
+            pl['DTSDKName']=f"iphoneos{pl['DTPlatformVersion']}"
+            pl['DTSDKBuild']=pl['DTXcodeBuild']
+            pl['DTPlatformBuild']=pl['DTXcodeBuild']
+            pl['BuildMachineOSBuild']=f"{random.randint(23,25)}G{random.randint(100,999)}"
+            if 'CFBundleURLTypes' in pl:
+                for u in pl['CFBundleURLTypes']:
+                    if 'CFBundleURLSchemes' in u: u['CFBundleURLSchemes']=[f"{name.lower()}open",f"scheme{rs(6)}"]
+                    if 'CFBundleURLName' in u: u['CFBundleURLName']=f"{bid}.open"
+            if 'UIApplicationShortcutItems' in pl:
+                for i in pl['UIApplicationShortcutItems']:
+                    if 'UIApplicationShortcutItemType' in i: i['UIApplicationShortcutItemType']=f"quickopen.{rs(8)}"
+            with open(p,'wb') as f: plistlib.dump(pl,f)
+        
+        def strip_bin(p):
+            if not STRIP: return
+            try: subprocess.run(['strip','-x',str(p)], capture_output=True)
+            except: pass
+        
+        def remove_sigs(app, triumph=True):
+            ts=['triumph','TriumphApp','TriumphCore','TriumphService','TriumphUI','triumphsdk','triumphsdkprod']
+            ig=['iGameGod','gamegod','IGG','iGSpoof','bfdecrypt','flexdecrypt','fouldecrypt','kernrw','krw','libloader','substrate','MobileSubstrate','CydiaSubstrate','iGameGodLoader']
+            an=['Amplitude','Apollo','Datadog','Facebook','Factory','IOSSecuritySuite','KSCrash','Mintegral','PhoneNumberKit','QRCode','SwiftMessages','TOCropViewController','ZIPFoundation']
+            all_sigs=(ts if triumph else [])+ig+an
+            for root,dirs,files in os.walk(app):
+                for f in files:
+                    fp=Path(root)/f; ln=f.lower()
+                    for s in all_sigs:
+                        if s.lower() in ln:
+                            try: fp.rename(fp.parent/f"{rs(12)}{fp.suffix}")
+                            except: pass
+                            break
+                for d in dirs:
+                    dp=Path(root)/d; ld=d.lower()
+                    for s in all_sigs:
+                        if s.lower() in ld:
+                            try: dp.rename(dp.parent/f"{rs(10)}.bundle")
+                            except: pass
+                            break
+        
+        def setup():
+            payload=WORK/"Payload"; app=payload/"TriumphApp.app"
+            if WORK.exists(): shutil.rmtree(WORK)
+            payload.mkdir(parents=True)
+            return payload,app
+        
+        def copy_triumph(src,dst,bid,name,dname):
+            shutil.copytree(src,dst)
+            if (dst/"TriumphApp").exists(): (dst/"TriumphApp").rename(dst/name); print(f"  Exec: TriumphApp -> {name}")
+            mod_plist(dst/"Info.plist",bid,name,dname,True)
+            print(f"  Info.plist: {bid}")
+            for ext in (dst/"PlugIns").iterdir():
+                if ext.is_dir() and ext.suffix=='.appex':
+                    ep=ext/"Info.plist"
+                    if ep.exists():
+                        with open(ep,'rb') as f: ei=plistlib.load(f)
+                        ob=ei.get('CFBundleIdentifier','')
+                        en=ext.stem.replace('NotificationServiceExtension','NotificationService')
+                        ei['CFBundleIdentifier']=f"{bid}.{en}"
+                        with open(ep,'wb') as f: plistlib.dump(ei,f)
+                        print(f"  Ext: {ob} -> {bid}.{en}")
+            return dst
+        
+        def embed_igg(dst,bid):
+            src=WORK/"igg"/"Library"/"Frameworks"/"iGameGod.framework"
+            if not src.exists(): print("  FW missing"); return None,None
+            fdir=dst/"Frameworks"; fdir.mkdir(exist_ok=True)
+            fn=f"{rs(8)}.framework"; df=fdir/fn
+            shutil.copytree(src,df)
+            fb=fn.replace('.framework','')
+            if (df/"iGameGod").exists(): (df/"iGameGod").rename(df/fb); print(f"  FW: iGameGod -> {fb}")
+            ms=df/"Modules"/"iGameGod.swiftmodule"
+            if ms.exists(): ms.rename(df/"Modules"/f"{fb.lower()}.swiftmodule")
+            with open(df/"Info.plist",'rb') as f: pl=plistlib.load(f)
+            pl['CFBundleIdentifier']=f"{bid}.framework"
+            pl['CFBundleName']=fb; pl['CFBundleExecutable']=fb
+            pl['CFBundleShortVersionString']=f"{random.randint(1,9)}.{random.randint(0,9)}.{random.randint(0,9)}.{random.randint(0,9)}"
+            pl['CFBundleVersion']=str(random.randint(1,999))
+            pl['DTXcode']=str(random.randint(2600,2750))
+            pl['DTXcodeBuild']=f"{random.randint(26,28)}A{random.randint(1000,9999)}"
+            pl['BuildMachineOSBuild']=f"{random.randint(23,25)}G{random.randint(100,999)}"
+            with open(df/"Info.plist",'wb') as f: plistlib.dump(pl,f)
+            print(f"  FW: {fn} (bin: {fb})")
+            td=dst/"Tools"; td.mkdir(exist_ok=True)
+            ld=WORK/"igg"/"Applications"/"iGameGod.app"/"SharedFrameworks"/"libloader.dylib"
+            if ld.exists():
+                ln=f"{rs(12)}.dylib"; shutil.copy2(ld,td/ln); print(f"  libloader -> {ln}")
+            return df,fb
+        
+        def compile_inj(dst,fw,fb):
+            src=f'''// iGameGod Injector - Triumph 2.134
+    #import <dlfcn.h>
+    #import <objc/runtime.h>
+    #import <objc/message.h>
+    #import <stdio.h>
+    #import <pthread.h>
+    #import <unistd.h>
+    static void* h=NULL; static Class c=NULL;
+    static void init(){{usleep(500000);const char* p="@executable_path/Frameworks/{fw}.framework/{fb}";h=dlopen(p,RTLD_LAZY|RTLD_GLOBAL);if(!h){{fprintf(stderr,"dlopen fail: %s\\n",dlerror());return;}}c=(Class)dlsym(h,"OBJC_CLASS_$_GameGod");if(!c)c=objc_getClass("GameGod");if(!c){{fprintf(stderr,"GameGod class missing\\n");return;}}void(*m)(Class,SEL)=(void*)objc_msgSend;m(c,sel_registerName("prepareResourceBundle"));m(c,sel_registerName("prepareTemporaryStorage"));m(c,sel_registerName("embedGameGod"));fprintf(stderr,"iGameGod ready\\n");}}
+    __attribute__((constructor))static void ctor(){{pthread_t t;pthread_create(&t,NULL,(void*(*)(void*))init,NULL);pthread_detach(t);}}
+    __attribute__((visibility("default")))void iGameGodInjectorShowMenu(){{if(c){{void(*m)(Class,SEL)=(void*)objc_msgSend;m(c,sel_registerName("showGameGod"));}}}}
+    '''
+            sp=dst/"iGameGodInjector.c"
+            with open(sp,'w') as f: f.write(src)
+            op=dst/"iGameGodInjector.dylib"
+            subprocess.run(['xcrun','-sdk','iphoneos','clang','-shared','-fobjc-arc','-framework','Foundation','-framework','UIKit','-arch','arm64','-miphoneos-version-min=13.0','-o',str(op),str(sp)],check=True)
+            subprocess.run(['codesign','--sign','-','--force',str(op)],capture_output=True)
+            print(f"  Injected: {op.name} ({op.stat().st_size} bytes)")
+            return op
+        
+        def launch_script(dst,name):
+            s=f'''#!/bin/bash\nexport DYLD_INSERT_LIBRARIES="@executable_path/iGameGodInjector.dylib"\nexport DYLD_FORCE_FLAT_NAMESPACE=1\nexec "@executable_path/{name}" "$@"\n'''
+            p=dst/"launch.sh"; p.write_text(s); p.chmod(0o755)
+            print("  launch.sh created")
+        
+        def entitlements(dst,bid):
+            e={'application-identifier':f'TEAMID.{bid}','aps-environment':'development','get-task-allow':True,'com.apple.security.cs.debugger':True,'com.apple.security.cs.disable-executable-page-protection':True,'com.apple.security.cs.disable-library-validation':True,'keychain-access-groups':[f'TEAMID.{bid}'],'com.apple.developer.team-identifier':'TEAMID'}
+            with open(dst/"entitlements.plist",'wb') as f: plistlib.dump(e,f)
+            print("  entitlements.plist")
+        
+        def provision(dst):
+            prov=b'''<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>AppIDName</key><string>Triumph 2.134 iGameGod</string><key>ApplicationIdentifierPrefix</key><array><string>TEAMID</string></array><key>CreationDate</key><date>2026-01-01T00:00:00Z</date><key>Platform</key><array><string>iOS</string></array><key>IsXcodeManaged</key><false/><key>DeveloperCertificates</key><array><data>PLACEHOLDER</data></array><key>Entitlements</key><dict><key>application-identifier</key><string>TEAMID.com.final.app</string><key>get-task-allow</key><true/><key>com.apple.security.cs.debugger</key><true/><key>com.apple.security.cs.disable-executable-page-protection</key><true/><key>com.apple.security.cs.disable-library-validation</key><true/></dict><key>ExpirationDate</key><date>2027-01-01T00:00:00Z</date><key>Name</key><string>Triumph 2.134 iGameGod</string><key>ProvisionedDevices</key><array/><key>TeamIdentifier</key><array><string>TEAMID</string></array><key>TeamName</key><string>Personal Team</string><key>TimeToLive</key><integer>365</integer><key>UUID</key><string>00000000-0000-0000-0000-000000000000</string><key>Version</key><integer>1</integer></dict></plist>'''
+            (dst/"embedded.mobileprovision").write_bytes(prov)
+            print("  embedded.mobileprovision")
+        
+        def strip_all(app):
+            print("Stripping...")
+            for r,_,fs in os.walk(app):
+                for f in fs:
+                    fp=Path(r)/f
+                    try:
+                        with open(fp,'rb') as f2: m=f2.read(4)
+                        if m in [b'\xcf\xfa\xed\xfe',b'\xfe\xed\xfa\xcf',b'\xcf\xfa\xed\xfe\x0c\x00\x00\x00']: strip_bin(fp); print(f"  {fp.relative_to(app)}")
+                    except: pass
+        
+        def pack(payload,out):
+            with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
+                for f in payload.rglob('*'):
+                    if f.is_file(): z.write(f,f.relative_to(payload.parent))
+            print(f"IPA: {out} ({out.stat().st_size/1e6:.1f} MB)")
+        
+        # ── MAIN ──
+        print("="*60); print("TRIUMPH 2.134 + IGAMEGOD - FINAL BUILD"); print("="*60)
+        bid=rb(); name=rs(10).capitalize()
+        print(f"Bundle: {bid}\nExec: {name}")
+        
+        # Extract Triumph
+        with zipfile.ZipFile('/tmp/triumph.ipa','r') as z: z.extractall(WORK/"triumph")
+        t_app=list((WORK/"triumph"/"Payload").iterdir())[0]
+        
+        # Extract iGameGod
+        subprocess.run(['ar','x','/tmp/igg.deb'],cwd=WORK/"igg",check=True)
+        subprocess.run(['tar','-xf','data.tar.lzma'],cwd=WORK/"igg",check=True)
+        subprocess.run(['tar','-xf','data.tar'],cwd=WORK/"igg",check=True)
+        
+        # Build
+        payload,app=setup()
+        copy_triumph(t_app,app,bid,name,"Triumph Arcade")
+        remove_sigs(app,True)
+        fw_path,fb=embed_igg(app,bid)
+        if fw_path:
+            fn=fw_path.name.replace('.framework','')
+            compile_inj(app,fn,fb)
+            launch_script(app,name)
+        entitlements(app,bid); provision(app); strip_all(app)
+        pack(payload,OUT_IPA)
+        print(f"\n{'='*60}\nDONE: {OUT_IPA}\nBundle: {bid}\nExec: {name}\n{'='*60}")
+        PYEOF
+        
+        python3 /tmp/build.py
+    
+    # ──────────────────────────────────────────────────────────────
+    # UPLOAD: Final IPA as artifact
+    # ──────────────────────────────────────────────────────────────
+    - name: Upload Final IPA
+      uses: actions/upload-artifact@v4
+      with:
+        name: Triumph_2.134_iGameGod_FINAL
+        path: /tmp/Triumph_2.134_iGameGod_FINAL.ipa
+        retention-days: 30
